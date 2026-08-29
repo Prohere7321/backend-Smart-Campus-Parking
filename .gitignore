@@ -1,0 +1,20 @@
+# Python virtual environment
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Ultralytics generated training and prediction results
+runs/
+
+# Editor settings
+.vscode/
+.idea/
+
+# Old helmet model
+helmet_best.pt
