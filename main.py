@@ -36,3 +36,31 @@ def parking_status():
             status_code=500,
             detail=f"Failed to retrieve parking status: {str(e)}"
         )
+
+@app.get("/officer/detections")
+def officer_detections(violation_only: bool = False):
+    try:
+        query = {}
+
+        if violation_only:
+            query = {
+                "event": {
+                    "$regex": "helmet|violation",
+                    "$options": "i"
+                }
+            }
+
+        records = list(
+            db["detection_logs"].find(
+                query,
+                {"_id": 0}
+            ).sort("timestamp", -1)
+        )
+
+        return records
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve detection logs: {str(e)}"
+        )
