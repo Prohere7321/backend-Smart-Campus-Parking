@@ -3,3 +3,5 @@ easyocr==1.7.2
 ultralytics==8.4.83
 Pillow==12.2.0
 numpy==2.4.6
+fastapi==0.141.1
+uvicorn==0.52.4
