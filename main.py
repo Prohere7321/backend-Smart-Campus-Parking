@@ -64,3 +64,28 @@ def officer_detections(violation_only: bool = False):
             status_code=500,
             detail=f"Failed to retrieve detection logs: {str(e)}"
         )
+
+@app.get("/parking/user-vehicles")
+def get_user_vehicles(user_email: str):
+    try:
+        user = db["users"].find_one(
+            {"email": user_email},
+            {"_id": 0, "vehicles": 1}
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        return user.get("vehicles", [])
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve user vehicles: {str(e)}"
+        )
