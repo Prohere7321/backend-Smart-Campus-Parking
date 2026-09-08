@@ -195,3 +195,60 @@ def delete_vehicle(user_email: str, plate: str):
             status_code=500,
             detail=f"Failed to delete vehicle: {str(e)}"
         )
+
+@app.get("/admin/all-vehicles")
+def get_all_vehicles():
+    try:
+        users = list(
+            db["users"].find(
+                {},
+                {
+                    "_id": 0,
+                    "name": 1,
+                    "email": 1,
+                    "role": 1,
+                    "student_id": 1,
+                    "staff_id": 1,
+                    "driving_score": 1,
+                    "vehicles": 1
+                }
+            )
+        )
+
+        all_vehicles = []
+
+        for user in users:
+            for vehicle in user.get("vehicles", []):
+                full_plate = vehicle.get("plate", "")
+                plate = full_plate
+                province = ""
+
+                # Mobile app currently stores Thai province as part of plate.
+                # Split the final space-separated part for the admin table.
+                if " " in full_plate:
+                    plate, province = full_plate.rsplit(" ", 1)
+
+                owner_id = (
+                    user.get("student_id")
+                    or user.get("staff_id")
+                    or ""
+                )
+
+                all_vehicles.append({
+                    "owner": user.get("name", ""),
+                    "ownerEmail": user.get("email", ""),
+                    "role": user.get("role", ""),
+                    "id": owner_id,
+                    "plate": plate,
+                    "province": province,
+                    "vehicle": vehicle.get("model", ""),
+                    "score": user.get("driving_score", 100)
+                })
+
+        return all_vehicles
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve all vehicles: {str(e)}"
+        )
