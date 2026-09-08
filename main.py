@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -368,4 +369,108 @@ def get_detections():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve detections: {str(e)}"
+        )
+
+class DetectionCreate(BaseModel):
+    license_plate: str
+    vehicle_type: str
+    helmet_detected: bool | None = None
+    gate_type: str
+    zone: str = ""
+
+
+@app.post("/detections")
+def create_detection(detection: DetectionCreate):
+    try:
+        detected_plate = detection.license_plate.strip()
+
+        # Try to match the detected plate with either:
+        # 1. newer embedded vehicles[]
+        # 2. legacy top-level license_plate
+        matched_user = None
+
+        users = db["users"].find(
+            {},
+            {
+                "_id": 0,
+                "name": 1,
+                "email": 1,
+                "role": 1,
+                "license_plate": 1,
+                "vehicles": 1
+            }
+        )
+
+        for user in users:
+            legacy_plate = str(user.get("license_plate", "")).strip()
+
+            if legacy_plate and legacy_plate != "-" and legacy_plate == detected_plate:
+                matched_user = user
+                break
+
+            for vehicle in user.get("vehicles", []):
+                stored_plate = str(vehicle.get("plate", "")).strip()
+
+                # New mobile registrations may contain a province after the plate.
+                stored_plate_only = stored_plate.split(" ", 1)[0]
+
+                if (
+                    stored_plate == detected_plate
+                    or stored_plate_only == detected_plate
+                ):
+                    matched_user = user
+                    break
+
+            if matched_user:
+                break
+
+        # Helmet violation only applies to motorcycles.
+        violation = (
+            detection.vehicle_type.lower() == "motorcycle"
+            and detection.helmet_detected is False
+        )
+
+        matched_user_name = (
+            matched_user.get("name")
+            if matched_user
+            else None
+        )
+
+        record = {
+            "timestamp": datetime.utcnow(),
+            "license_plate": detected_plate,
+            "vehicle_type": detection.vehicle_type.lower(),
+            "helmet_detected": detection.helmet_detected,
+            "violation": violation,
+            "matched_user": matched_user_name,
+            "matched_user_email": (
+                matched_user.get("email")
+                if matched_user
+                else None
+            ),
+            "matched_user_role": (
+                matched_user.get("role")
+                if matched_user
+                else None
+            ),
+            "gate_type": detection.gate_type,
+            "zone": detection.zone,
+            "event": (
+                "No Helmet Detected"
+                if violation
+                else "Vehicle Detected"
+            )
+        }
+
+        db["detection_logs"].insert_one(record)
+
+        # Remove MongoDB ObjectId before returning JSON.
+        record.pop("_id", None)
+
+        return record
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create detection: {str(e)}"
         )
