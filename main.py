@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from pymongo import MongoClient
 import os
@@ -13,6 +14,11 @@ MONGODB_DB = os.getenv("MONGODB_DB")
 client = MongoClient(MONGODB_URI)
 db = client[MONGODB_DB]
 
+class VehicleRegistration(BaseModel):
+    plate: str
+    model: str
+    user_email: str
+    role: str
 
 @app.get("/")
 def root():
@@ -88,4 +94,104 @@ def get_user_vehicles(user_email: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve user vehicles: {str(e)}"
+        )
+
+@app.post("/parking/register-vehicle")
+def register_vehicle(vehicle: VehicleRegistration):
+    try:
+        user = db["users"].find_one(
+            {"email": vehicle.user_email},
+            {"_id": 0, "vehicles": 1}
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        existing_vehicles = user.get("vehicles", [])
+
+        for existing_vehicle in existing_vehicles:
+            if existing_vehicle.get("plate") == vehicle.plate:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Vehicle already registered"
+                )
+
+        vehicle_data = {
+            "plate": vehicle.plate,
+            "model": vehicle.model
+        }
+
+        result = db["users"].update_one(
+            {"email": vehicle.user_email},
+            {"$push": {"vehicles": vehicle_data}}
+        )
+
+        if result.modified_count != 1:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to register vehicle"
+            )
+
+        return {
+            "message": "Vehicle registered successfully",
+            "vehicle": vehicle_data
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to register vehicle: {str(e)}"
+        )
+
+@app.delete("/parking/delete-vehicle")
+def delete_vehicle(user_email: str, plate: str):
+    try:
+        user = db["users"].find_one(
+            {"email": user_email},
+            {"_id": 0, "vehicles": 1}
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        existing_vehicles = user.get("vehicles", [])
+
+        if not any(vehicle.get("plate") == plate for vehicle in existing_vehicles):
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found"
+            )
+
+        result = db["users"].update_one(
+            {"email": user_email},
+            {"$pull": {"vehicles": {"plate": plate}}}
+        )
+
+        if result.modified_count != 1:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete vehicle"
+            )
+
+        return {
+            "message": "Vehicle deleted successfully",
+            "plate": plate
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete vehicle: {str(e)}"
         )
