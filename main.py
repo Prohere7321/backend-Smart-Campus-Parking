@@ -309,3 +309,63 @@ def adjust_score(adjustment: ScoreAdjustment):
             status_code=500,
             detail=f"Failed to adjust driving score: {str(e)}"
         )
+
+@app.get("/detections")
+def get_detections():
+    try:
+        records = list(
+            db["detection_logs"].find(
+                {},
+                {"_id": 0}
+            ).sort("timestamp", -1)
+        )
+
+        detections = []
+
+        for record in records:
+            event = str(record.get("event", ""))
+            event_lower = event.lower()
+
+            # Support both newer detection records and older detection_logs.
+            violation = record.get("violation")
+
+            if violation is None:
+                violation = (
+                    "no helmet" in event_lower
+                    or "violation" in event_lower
+                )
+
+            vehicle_type = record.get("vehicle_type")
+
+            if not vehicle_type:
+                vehicle_type = (
+                    "motorcycle"
+                    if "helmet" in event_lower
+                    else "car"
+                )
+
+            helmet_detected = record.get("helmet_detected")
+
+            if helmet_detected is None and vehicle_type == "motorcycle":
+                helmet_detected = not violation
+
+            detections.append({
+                "timestamp": record.get("timestamp"),
+                "license_plate": record.get("license_plate", ""),
+                "vehicle_type": vehicle_type,
+                "helmet_detected": helmet_detected,
+                "violation": bool(violation),
+                "matched_user": record.get("matched_user"),
+                "gate_type": (
+                    record.get("gate_type")
+                    or record.get("camera_location")
+                )
+            })
+
+        return detections
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve detections: {str(e)}"
+        )
