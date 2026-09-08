@@ -252,3 +252,60 @@ def get_all_vehicles():
             status_code=500,
             detail=f"Failed to retrieve all vehicles: {str(e)}"
         )
+
+class ScoreAdjustment(BaseModel):
+    user_email: str
+    points_changed: int
+    reason: str = ""
+    gate_name: str = ""
+    image_url: str = ""
+
+
+@app.post("/admin/adjust-score")
+def adjust_score(adjustment: ScoreAdjustment):
+    try:
+        user = db["users"].find_one(
+            {"email": adjustment.user_email},
+            {"_id": 0, "driving_score": 1}
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        current_score = user.get("driving_score", 100)
+
+        new_score = max(
+            0,
+            min(100, current_score + adjustment.points_changed)
+        )
+
+        result = db["users"].update_one(
+            {"email": adjustment.user_email},
+            {"$set": {"driving_score": new_score}}
+        )
+
+        if result.matched_count != 1:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update driving score"
+            )
+
+        return {
+            "message": "Driving score updated successfully",
+            "user_email": adjustment.user_email,
+            "previous_score": current_score,
+            "points_changed": adjustment.points_changed,
+            "new_score": new_score
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to adjust driving score: {str(e)}"
+        )
